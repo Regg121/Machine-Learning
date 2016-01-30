@@ -1,0 +1,102 @@
+---
+title: "Machine Learning Assignment"
+author: "Gregory Papaioannou"
+date: "January 28, 2016"
+output: html_document
+---
+#### Quantified Self Movement Data Analysis Report  
+  
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+library(parallel)
+library(doParallel)
+```
+  
+#### Parallel computing  
+```{r}
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+```  
+#### Load the data  
+```{r}
+train <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv')
+test <- read.csv('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv')
+```  
+#### Get a first glimpse of the data  
+```{r}  
+# dim(trainRaw)
+# dim(testRaw)
+# summary(train)
+# summary(test)
+# sum(complete.cases(train))
+```  
+#### Start cleaning  
+```{r}
+# Drop the empty columns
+train <- train[, colSums(is.na(train)) == 0] 
+test <- test[, colSums(is.na(test)) == 0]
+
+# Drop the columns that that do not contribute much to the accelerometer measurements
+train <- train[, !grepl("^X|timestamp|window", names(train))]
+test <- test[, !grepl("^X|timestamp|window", names(test))]
+
+# Keep seperate the categorical variables 
+train_user_name <- train$user_name
+test_user_name <- test$user_name
+classe <- train$classe
+
+# Some more cleaning
+train <- train[, sapply(train, is.numeric)]
+test <- test[, sapply(test, is.numeric)]
+
+train$user_name <- train_user_name
+train$classe <- classe
+test$user_name <- test_user_name
+test <-subset(test, select=-problem_id)
+```  
+#### Cross validation sample  
+```{r}
+set.seed(13)
+inTrain <- createDataPartition(train$classe, p=0.75, list=F)
+trainData <- train[inTrain, ]
+testData <- train[-inTrain, ]
+```  
+#### Create model with the Stochastic Gradient Boosting algorithm  
+```{r}
+# 5 folds
+cv <- trainControl(method="cv", 5, allowParallel = TRUE)
+model <- train(classe ~ ., data=trainData, method="rf", trControl=cv, ntree=250)
+```  
+#### Performance of the model on the validation data set  
+```{r}
+prediction <- predict(model, testData)
+confusionMatrix(testData$classe, prediction)
+```  
+#### Accuracy  
+```{r}
+postResample(prediction, testData$classe)
+```  
+#### Estimated out-of-sample error  
+```{r}
+1 - as.numeric(confusionMatrix(testData$classe, prediction)$overall[1])
+```  
+#### Prediction for Test Data  
+```{r}
+predict(model, test)
+```  
+## Figures  
+#### Correlation Matrix  
+```{r}
+correl <- cor(trainData[, sapply(train, is.numeric)])
+corrplot(correl, method="color")
+```  
+#### Tree  
+```{r}
+treeModel <- rpart(classe ~ ., data=trainData, method="class")
+prp(treeModel)
+```  
+  
